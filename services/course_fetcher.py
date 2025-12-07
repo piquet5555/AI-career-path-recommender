@@ -11,15 +11,27 @@ load_dotenv()
 YALE_API_ENDPOINT = os.getenv("YALE_API_ENDPOINT")
 YALE_API_KEY = os.getenv("YALE_API_KEY")
 
-# List of common Yale College subject codes (expand this list for full coverage)
-# You need a comprehensive list of all subjects offered at Yale College (YC)
-# Example of a partial list:
+# Set timeout to 60 seconds to prevent read timeout errors
+REQUEST_TIMEOUT = 60 
+
+# List of Yale College subject codes (expand this list for full coverage)
 SUBJECT_CODES = [
-    "AFAM", "AMST", "ANTH", "ARBC", "ARCG", "ASTR", "BENG", "BIOL",
-    "CPSC", "ECON", "ENGL", "HIST", "MATH", "MUSI", "PHIL", "PLSC",
-    "PSYC", "SOCI", "STAT", "YALE" # YALE includes courses not specific to a dept.
+    "ACCT","AFAM","AFST","AKKD","AMST","AMTH","ANTH","APHY","ARBC","ARCG","ARCH",
+    "ARMN","ART","ASL","ASTR","BENG","BIOL","BRST","BURM","CENG","CGSC","CHEM",
+    "CHER","CHLD","CHNS","CLCV","CLSS","CPAR","CPLT","CPSC","CSEC","CSLI","CZEC",
+    "DEVN","DRST","DUTC","EALL","EAST","EEB","EGYP","ENAS","ENGL","ENRG","ENVE",
+    "EPS","ER&M","EVST","FILM","FNSH","FREN","GLBL","GMAN","GREK","HEBR","HELN",
+    "HGRN","HIST","HLTH","HMRT","HNDI","HSAR","HSHM","HUMS","INDN","ITAL","JAPN",
+    "JDST","KHMR","KREN","LAST","LATN","LING","MATH","MB&B","MCDB","MENG","MMES",
+    "MTBT","MUSI","NAVY","NELC","NSCI","OTTM","PERS","PHIL","PHYS","PLSC","PLSH",
+    "PNJB","PORT","PSYC","RLST","ROMN","RSEE","RUSS","SBCR","SKRT","SLAV","SNHL",
+    "SOCY","SAST","SWAH","SPAN","SPEC","TKSH","TAML","TBTN","TDPS","UKRN","URBN",
+    "USAF","VIET","WLOF","WGSS","YORU","ZULU"
+
 ]
-TERM_CODE = "202603"  # Example: Fall 2026. Adjust to current/target term.
+
+# Changed to a known recent term (Fall 2025) for testing purposes
+TERM_CODE = "202503" 
 SCHOOL_CODE = "YC"    # Yale College
 
 def fetch_yale_course_data():
@@ -44,15 +56,25 @@ def fetch_yale_course_data():
         }
 
         try:
-            # Send GET request to the Yale API
-            response = requests.get(YALE_API_ENDPOINT, params=params, timeout=10)
-            response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+            # Send GET request with the increased timeout
+            response = requests.get(YALE_API_ENDPOINT, params=params, timeout=REQUEST_TIMEOUT)
+            
+            # --- API Key/Status Check ---
+            if response.status_code == 401:
+                print(f"FATAL ERROR: 401 Unauthorized for {subject}. Check your YALE_API_KEY in the .env file.")
+                return False # Stop further processing if key is rejected
+
+            # Raise HTTPError for other bad responses (4xx or 5xx)
+            response.raise_for_status() 
 
             data = response.json()
 
-            # The API response structure may require adjustment here.
-            # Assuming the course list is under a 'course' key in the response:
-            course_list = data.get('course', []) 
+            # Check if the response is already a list (which is the list of courses itself)
+            if isinstance(data, list):
+                course_list = data
+            # Otherwise, assume the course list is nested under a 'course' key (our original assumption)
+            else:
+                course_list = data.get('course', [])
             
             if course_list:
                 all_courses.extend(course_list)
@@ -61,6 +83,7 @@ def fetch_yale_course_data():
                 print(f"  > No courses found for {subject}")
 
         except requests.exceptions.RequestException as e:
+            # Catch network errors, connection failures, and final timeouts
             print(f"ERROR fetching data for {subject}: {e}")
             continue
 

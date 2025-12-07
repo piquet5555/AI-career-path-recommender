@@ -1,0 +1,18 @@
+# Web Framework and Server
+fastapi
+uvicorn[standard]
+python-multipart    # Required for form data/file uploads in FastAPI
+Jinja2              # Required for serving HTML templates (simple UI)
+
+# Data Handling & API Requests
+requests
+pandas
+python-dotenv       # For loading .env file locally
+
+# NLP/Modeling Libraries (for Phase III)
+scikit-learn
+spacy
+
+# Specific spaCy Model (Essential for vectorization/modeling)
+# This installs the small English model directly into the environment
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1.tar.gz
