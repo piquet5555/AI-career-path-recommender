@@ -1,4 +1,0 @@
-API Key (Client ID)
-l740e0c32e4a0847b296e030d0cbea97ef
-Shared Secret (Client Secret)
-1eaadc2c7590456a8b3e0b16883d1929
