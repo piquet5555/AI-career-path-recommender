@@ -113,12 +113,21 @@ class CourseRecommender:
         is_major_course = recommendation_df['subjectCode'].str.contains(major_code, na=False)
         recommendation_df.loc[is_major_course, 'score'] *= (1 + major_boost_factor)
 
-        # 6. Get Top Recommendations
+        # 6. DEDUPLICATION STEP (NEW)
+        # Drop duplicates based on the title and description (using the constants)
+        # We keep the entry with the highest score in case a cross-listed course 
+        # received a major boost and the duplicate didn't.
         recommended_courses = recommendation_df.sort_values(
             by='score', ascending=False
-        ).head(TOP_N)
+        ).drop_duplicates(
+            subset=[RAW_TITLE_KEY, RAW_DESC_KEY], # Check uniqueness based on title and description
+            keep='first' # Keep the version that ranked highest (often the one with the boost)
+        )
         
-        # 7. Format Output (Uses the imported RAW_KEY constants!)
+        # 7. Get Top N Recommendations
+        recommended_courses = recommended_courses.head(TOP_N)
+        
+        # 8. Format Output (The rest of the code remains the same)
         results = recommended_courses[[
             'subjectCode', RAW_TITLE_KEY, RAW_DESC_KEY, 'score' 
         ]].rename(columns={'subjectCode': 'course_code', 

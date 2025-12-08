@@ -1,5 +1,6 @@
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware  # FIX 1: Import CORS
 from pydantic import BaseModel
 from services.recommender import CourseRecommender
 
@@ -12,13 +13,27 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# FIX 2: Define origins list for CORS before usage
+origins = [
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+    "null", # Allows requests from files opened directly in the browser (file:///)
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Initialize the recommender model globally
 # This ensures the model (TF-IDF/S-BERT matrices) loads only once when the server starts
 try:
     recommender = CourseRecommender()
 except Exception as e:
     print(f"FATAL ERROR: Failed to initialize CourseRecommender: {e}")
-    # In a production environment, you might stop the server here
     recommender = None
 
 
@@ -47,9 +62,6 @@ def get_recommendations(request: RecommendationRequest):
         major_input = request.current_major.upper()
 
         if major_input not in valid_majors:
-            # You can decide whether to block or just warn for an invalid major
-            # For simplicity, we'll continue but log a warning.
-            # raise HTTPException(status_code=400, detail=f"Major '{major_input}' not found in course data.")
             print(f"Warning: Major '{major_input}' not found. Using generic recommendation.")
 
 
@@ -60,7 +72,7 @@ def get_recommendations(request: RecommendationRequest):
         )
         
         if not recommendations:
-             raise HTTPException(status_code=404, detail="No relevant courses found for the given criteria.")
+            raise HTTPException(status_code=404, detail="No relevant courses found for the given criteria.")
 
         return {
             "query": request.job_title,
@@ -76,7 +88,4 @@ def get_recommendations(request: RecommendationRequest):
 # --- 4. SERVER RUNNER (For Local Development) ---
 
 if __name__ == "__main__":
-    # You run the server using the uvicorn command in the terminal,
-    # but this block is useful for basic testing or specific setups.
-    # The standard command is: uvicorn main:app --reload
     print("Run the application using: uvicorn main:app --reload")

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Career Path Recommender</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        form { display: flex; flex-direction: column; gap: 15px; padding: 20px; border: 1px solid #ccc; border-radius: 8px; }
+        label { font-weight: bold; }
+        input, select { padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        button { padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .recommendation { border: 1px solid #eee; padding: 15px; margin-top: 10px; border-radius: 4px; }
+        .score { font-weight: bold; color: #28a745; }
+    </style>
+</head>
+<body>
+    <h1>Yale Course Recommender</h1>
+    <p>Enter a job title and your current major to get personalized course recommendations.</p>
+
+    <form id="recommendation-form">
+        <label for="job_title">Target Job Title:</label>
+        <input type="text" id="job_title" value="Quantitative Analyst" required>
+
+        <label for="current_major">Current Major (e.g., ECON):</label>
+        <input type="text" id="current_major" value="STAT" required>
+
+        <button type="submit">Get Recommendations</button>
+    </form>
+
+    <h2>Results</h2>
+    <div id="results"></div>
+
+    <script>
+        document.getElementById('recommendation-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = 'Loading recommendations...';
+
+            const jobTitle = document.getElementById('job_title').value;
+            const major = document.getElementById('current_major').value;
+
+            // Define the API endpoint (MUST be running locally)
+            const apiUrl = 'http://127.0.0.1:8000/recommendations/'; 
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ job_title: jobTitle, current_major: major })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                renderResults(data.results, resultsDiv);
+
+            } catch (error) {
+                resultsDiv.innerHTML = `<p style="color: red;">Error: Could not connect to API. Is your Uvicorn server running? (${error.message})</p>`;
+            }
+        });
+
+        function renderResults(recommendations, container) {
+            if (recommendations.length === 0) {
+                container.innerHTML = '<p>No recommendations found.</p>';
+                return;
+            }
+
+            let html = recommendations.map((course, index) => `
+                <div class="recommendation">
+                    <strong>Rank ${index + 1}: ${course.course_code} - ${course.title}</strong>
+                    <div class="score">Score: ${course.score.toFixed(4)}</div>
+                    <p>${course.description}</p>
+                </div>
+            `).join('');
+
+            container.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
