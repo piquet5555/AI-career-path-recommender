@@ -39,8 +39,8 @@
             const jobTitle = document.getElementById('job_title').value;
             const major = document.getElementById('current_major').value;
 
-            // Define the API endpoint (MUST be running locally)
-            const apiUrl = 'http://127.0.0.1:8000/recommendations/'; 
+            // Define the API endpoint
+            const apiUrl = 'https://ai-career-path-recommender-0cpj.onrender.com'; 
 
             try {
                 const response = await fetch(apiUrl, {
