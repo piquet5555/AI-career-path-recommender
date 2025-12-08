@@ -122,7 +122,7 @@ class CourseRecommender:
 
         # 3. Calculate TF-IDF Similarity Score
         query_tfidf = self.tfidf_vectorizer.transform([query])
-        tfidf_scores = cosine_similarity(query_tfidf, self.tfidf_matrix).flatten()latten()
+        tfidf_scores = cosine_similarity(query_tfidf, self.tfidf_matrix).flatten()
 
         # 4. Hybrid Scoring
         hybrid_scores = (sbert_scores * SBERT_WEIGHT) + (tfidf_scores * TFIDF_WEIGHT)
