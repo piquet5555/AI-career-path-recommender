@@ -40,3 +40,50 @@ Clone the project to your local machine using Git Bash or your terminal:
 ```bash
 git clone [https://github.com/piquet5555/AI-career-path-recommender.git](https://github.com/piquet5555/AI-career-path-recommender.git)
 cd AI-career-path-recommender
+```
+
+### Step 2: Create and Activate the Environment
+
+You must use a Conda environment to avoid conflicts with scientific libraries. Run these commands in your **Anaconda Prompt**:
+
+```bash
+conda create -n yale-env python=3.11 -y
+conda activate yale-env
+```
+
+### Step 3: Install Dependencies
+With the environment active, install all necessary libraries:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Step 4: Run the FastAPI Web Server
+Launch the web app using Uvicorn. This will also trigger the initial loading and vectorization of the AI model.
+
+```Bash
+uvicorn main:app --reload
+```
+
+The API server will now be running at `http://127.0.0.1:8000`.
+
+---
+
+## ⚙️ Usage
+
+### 1. Interactive Testing (Swagger UI)
+Open your web browser and navigate to: `http://127.0.0.1:8000/docs`
+
+Use the Swagger UI to interact with the `/recommendations/` POST endpoint and test the core logic with sample inputs (Job Title, Major).
+
+### 2. Frontend Interface
+Open the local file `frontend/index.html` in your web browser to interact with the full web interface.
+
+---
+
+##🚀 Cloud Deployment Status
+This application has been successfully containerized using Docker and deployed on Render using a memory-optimized approach to ensure stability on the free tier.
+
+Live API Base URL: https://ai-career-path-recommender-zkyj.onrender.com/
+
+Swagger UI: https://ai-career-path-recommender-zkyj.onrender.com/docs
