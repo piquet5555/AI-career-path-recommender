@@ -29,15 +29,25 @@ class CourseRecommender:
     """
     
     def __init__(self, data_file: str = 'data/yale_courses_202503.json'):
+        # Initialize model attribute for permanent storage (FINAL OOM FIX)
+        self.sbert_model = None 
+        self.is_ready = False
+        
         # 1. Load Data
-        self.df = YaleCourseData(data_file).get_course_dataframe()
-        self.course_data = YaleCourseData(data_file)
+        data_loader = YaleCourseData(data_file)
+        self.df = data_loader.get_course_dataframe()
+        self.course_data = data_loader
         
         # --- OOM FIX: Check for pre-calculated files ---
         # If the matrices exist (meaning we ran the script locally once), load them.
         if os.path.exists(SBERT_MATRIX_PATH) and os.path.exists(TFIDF_MATRIX_PATH):
             print("Loading pre-calculated matrices from disk to conserve memory...")
             self.load_matrices_from_disk()
+            
+            # FINAL OOM FIX: Load SBERT model once and store it (Memory spike, but only once)
+            print("Loading Sentence-BERT model once for query encoding...")
+            self.sbert_model = SentenceTransformer('all-MiniLM-L6-v2') 
+            
             self.is_ready = True
             return
             
@@ -106,16 +116,13 @@ class CourseRecommender:
         query = f"{job_title} {current_major}"
 
         # 2. Calculate S-BERT Similarity Score
-        # NOTE: S-BERT model is NOT needed here if matrices are pre-calculated.
-        # We temporarily re-load the model just to encode the single query string.
-        sbert_query_model = SentenceTransformer('all-MiniLM-L6-v2')
-        query_embedding = sbert_query_model.encode([query])
+        # FINAL OOM FIX: Uses the pre-loaded self.sbert_model attribute
+        query_embedding = self.sbert_model.encode([query])
         sbert_scores = cosine_similarity(query_embedding, self.course_embeddings).flatten()
-        del sbert_query_model # Clean up after use
 
         # 3. Calculate TF-IDF Similarity Score
         query_tfidf = self.tfidf_vectorizer.transform([query])
-        tfidf_scores = cosine_similarity(query_tfidf, self.tfidf_matrix).flatten()
+        tfidf_scores = cosine_similarity(query_tfidf, self.tfidf_matrix).flatten()latten()
 
         # 4. Hybrid Scoring
         hybrid_scores = (sbert_scores * SBERT_WEIGHT) + (tfidf_scores * TFIDF_WEIGHT)
