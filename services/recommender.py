@@ -1,109 +1,125 @@
-import pandas as pd
 import numpy as np
-import spacy
+import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 from services.data_loader import YaleCourseData
-from services.data_loader import RAW_TITLE_KEY, RAW_DESC_KEY # IMPORT CONSTANTS
+from sklearn.metrics.pairwise import cosine_similarity
 
-# --- GLOBAL CONFIGURATION ---
-DATA_PATH = "data/yale_courses_202503.json" 
+# NEW IMPORTS FOR OOM FIX
+import pickle
+import os
+
+# --- Constants ---
 TOP_N = 10
-SBERT_MODEL_NAME = 'all-MiniLM-L6-v2' 
-SBERT_WEIGHT = 0.70 
-TFIDF_WEIGHT = 0.30 
+SBERT_WEIGHT = 0.70
+TFIDF_WEIGHT = 0.30
+RAW_TITLE_KEY = 'courseTitle'
+RAW_DESC_KEY = 'courseDescription'
+
+# NEW CONSTANTS FOR OOM FIX: File paths for saved matrices
+SBERT_MATRIX_PATH = 'data/sbert_matrix.pkl'
+TFIDF_VECTORIZER_PATH = 'data/tfidf_vectorizer.pkl'
+TFIDF_MATRIX_PATH = 'data/tfidf_matrix.pkl'
+
 
 class CourseRecommender:
     """
-    Core hybrid NLP model using TF-IDF and S-BERT.
+    A hybrid recommendation system combining Sentence-BERT (semantic) and 
+    TF-IDF (keyword) similarity for course recommendations.
     """
-    def __init__(self):
-        # 1. Load Data
-        self.course_data = YaleCourseData(DATA_PATH)
-        self.df = self.course_data.get_course_dataframe()
-        self.texts = self.df['combined_text'].fillna('')
-        
-        # 2. Initialize Models
-        self._load_nlp_tools()
-        
-        # 3. Create Vectors
-        self.tfidf_matrix = self._vectorize_tfidf()
-        self.sbert_matrix = self._vectorize_sbert()
-
-    def _load_nlp_tools(self):
-        """Loads spaCy and Sentence-BERT models."""
-        try:
-            self.nlp = spacy.load("en_core_web_sm")
-        except OSError:
-            print("FATAL ERROR: spaCy model 'en_core_web_sm' not found.")
-            self.nlp = None
-        
-        try:
-            print(f"Loading Sentence-BERT model: {SBERT_MODEL_NAME}...")
-            self.sbert_model = SentenceTransformer(SBERT_MODEL_NAME)
-        except Exception as e:
-            print(f"FATAL ERROR loading S-BERT model: {e}")
-            self.sbert_model = None
-
-    def _clean_job_input(self, text):
-        """Cleans input text using spaCy for TF-IDF."""
-        if not self.nlp:
-            return text
-        doc = self.nlp(text.lower())
-        tokens = [token.lemma_ for token in doc if not token.is_stop and not token.is_punct and token.is_alpha]
-        return " ".join(tokens)
     
-    def _vectorize_tfidf(self):
-        """Vectorizes the combined course text using TF-IDF."""
-        if self.df.empty:
-            print("Warning: Cannot vectorize TF-IDF; DataFrame is empty.")
-            return np.array([])
-
-        print("Initializing TF-IDF Vectorizer...")
-        self.tfidf_vectorizer = TfidfVectorizer(stop_words='english', min_df=5, max_df=0.85)
-        cleaned_texts = [self._clean_job_input(text) for text in self.texts]
-        tfidf_matrix = self.tfidf_vectorizer.fit_transform(cleaned_texts)
-        print(f"TF-IDF Vectorization complete. Matrix shape: {tfidf_matrix.shape}")
-        return tfidf_matrix
-
-    def _vectorize_sbert(self):
-        """Generates S-BERT embeddings for course text."""
-        if self.df.empty or not self.sbert_model:
-            print("Warning: Cannot vectorize S-BERT; Model not loaded or DataFrame is empty.")
-            return np.array([])
+    def __init__(self, data_file: str = 'data/yale_courses_202503.json'):
+        # 1. Load Data
+        self.df = YaleCourseData(data_file).get_course_dataframe()
+        self.course_data = YaleCourseData(data_file)
+        
+        # --- OOM FIX: Check for pre-calculated files ---
+        # If the matrices exist (meaning we ran the script locally once), load them.
+        if os.path.exists(SBERT_MATRIX_PATH) and os.path.exists(TFIDF_MATRIX_PATH):
+            print("Loading pre-calculated matrices from disk to conserve memory...")
+            self.load_matrices_from_disk()
+            self.is_ready = True
+            return
             
+        # If files don't exist (e.g., first run on a new machine), calculate and save.
+        print("Calculating and saving matrices for the first time...")
+        
+        # 2. Initialize Models (Heavy computation)
+        self.initialize_sbert()
+        self.initialize_tfidf()
+        
+        # 3. Save Matrices (For subsequent memory-efficient loads)
+        self.save_matrices_to_disk()
+        self.is_ready = True
+
+    # --- Initialization Methods (Called only if files don't exist) ---
+    def initialize_sbert(self):
+        print("Loading Sentence-BERT model: all-MiniLM-L6-v2...")
+        # Note: This loads a very large language model into memory temporarily
+        self.sbert_model = SentenceTransformer('all-MiniLM-L6-v2')
         print("Generating S-BERT embeddings (This may take a moment)...")
-        sbert_matrix = self.sbert_model.encode(self.texts, convert_to_tensor=False)
-        print(f"S-BERT Encoding complete. Matrix shape: {sbert_matrix.shape}")
-        return sbert_matrix
+        # Generate and store embeddings for every course description
+        self.course_embeddings = self.sbert_model.encode(self.df['combined_text'].tolist(), show_progress_bar=False)
+        print(f"S-BERT Encoding complete. Matrix shape: {self.course_embeddings.shape}")
+        # Clean up the large model from memory after use (optional but helpful)
+        del self.sbert_model 
 
+    def initialize_tfidf(self):
+        print("Initializing TF-IDF Vectorizer...")
+        self.tfidf_vectorizer = TfidfVectorizer(stop_words='english')
+        self.tfidf_matrix = self.tfidf_vectorizer.fit_transform(self.df['combined_text'])
+        print(f"TF-IDF Vectorization complete. Matrix shape: {self.tfidf_matrix.shape}")
+
+    # --- NEW: Save and Load Methods for OOM Fix ---
+    def save_matrices_to_disk(self):
+        # Save S-BERT Matrix
+        with open(SBERT_MATRIX_PATH, 'wb') as f:
+            pickle.dump(self.course_embeddings, f)
+        
+        # Save TF-IDF Vectorizer and Matrix
+        with open(TFIDF_VECTORIZER_PATH, 'wb') as f:
+            pickle.dump(self.tfidf_vectorizer, f)
+        with open(TFIDF_MATRIX_PATH, 'wb') as f:
+            pickle.dump(self.tfidf_matrix, f)
+        print("Matrices successfully saved to disk.")
+
+    def load_matrices_from_disk(self):
+        # Load S-BERT Matrix
+        with open(SBERT_MATRIX_PATH, 'rb') as f:
+            self.course_embeddings = pickle.load(f)
+        
+        # Load TF-IDF Vectorizer and Matrix
+        with open(TFIDF_VECTORIZER_PATH, 'rb') as f:
+            self.tfidf_vectorizer = pickle.load(f)
+        with open(TFIDF_MATRIX_PATH, 'rb') as f:
+            self.tfidf_matrix = pickle.load(f)
+        
+        print("Matrices loaded from disk.")
+    # ----------------------------------------------
+
+    # --- Core Recommendation Logic ---
     def recommend(self, job_title: str, current_major: str):
-        """
-        Calculates hybrid course recommendations based on both S-BERT and TF-IDF similarity.
-        """
-        if self.tfidf_matrix.size == 0 or self.sbert_matrix.size == 0:
-            return []
+        if not self.is_ready:
+            raise RuntimeError("Recommender model is not fully initialized.")
 
-        # 1. Prepare and Vectorize Job Title (TF-IDF & S-BERT)
-        cleaned_job_tfidf = self._clean_job_input(job_title)
-        job_vector_tfidf = self.tfidf_vectorizer.transform([cleaned_job_tfidf])
-        job_vector_sbert = self.sbert_model.encode([job_title], convert_to_tensor=False)
+        # 1. Combine Job Title and Major into a Query String
+        query = f"{job_title} {current_major}"
 
-        # 2. Calculate Similarity Scores
-        tfidf_scores = cosine_similarity(job_vector_tfidf, self.tfidf_matrix).flatten()
-        sbert_scores = cosine_similarity(job_vector_sbert, self.sbert_matrix).flatten()
-        
-        # 3. Normalize Scores
-        tfidf_max = tfidf_scores.max() if tfidf_scores.max() > 0 else 1
-        sbert_max = sbert_scores.max() if sbert_scores.max() > 0 else 1
-        
-        normalized_tfidf = tfidf_scores / tfidf_max
-        normalized_sbert = sbert_scores / sbert_max
-        
-        # 4. Calculate Hybrid Score
-        hybrid_scores = (normalized_sbert * SBERT_WEIGHT) + (normalized_tfidf * TFIDF_WEIGHT)
-        
+        # 2. Calculate S-BERT Similarity Score
+        # NOTE: S-BERT model is NOT needed here if matrices are pre-calculated.
+        # We temporarily re-load the model just to encode the single query string.
+        sbert_query_model = SentenceTransformer('all-MiniLM-L6-v2')
+        query_embedding = sbert_query_model.encode([query])
+        sbert_scores = cosine_similarity(query_embedding, self.course_embeddings).flatten()
+        del sbert_query_model # Clean up after use
+
+        # 3. Calculate TF-IDF Similarity Score
+        query_tfidf = self.tfidf_vectorizer.transform([query])
+        tfidf_scores = cosine_similarity(query_tfidf, self.tfidf_matrix).flatten()
+
+        # 4. Hybrid Scoring
+        hybrid_scores = (sbert_scores * SBERT_WEIGHT) + (tfidf_scores * TFIDF_WEIGHT)
+
         # 5. Apply Major Constraint Layer (Score Boost)
         recommendation_df = self.df.copy()
         recommendation_df['score'] = hybrid_scores
@@ -112,22 +128,19 @@ class CourseRecommender:
         major_code = current_major.upper() 
         is_major_course = recommendation_df['subjectCode'].str.contains(major_code, na=False)
         recommendation_df.loc[is_major_course, 'score'] *= (1 + major_boost_factor)
-
-        # 6. DEDUPLICATION STEP (NEW)
-        # Drop duplicates based on the title and description (using the constants)
-        # We keep the entry with the highest score in case a cross-listed course 
-        # received a major boost and the duplicate didn't.
+        
+        # 6. DEDUPLICATION STEP: Drop duplicates based on course content
         recommended_courses = recommendation_df.sort_values(
             by='score', ascending=False
         ).drop_duplicates(
-            subset=[RAW_TITLE_KEY, RAW_DESC_KEY], # Check uniqueness based on title and description
-            keep='first' # Keep the version that ranked highest (often the one with the boost)
+            subset=[RAW_TITLE_KEY, RAW_DESC_KEY], 
+            keep='first' 
         )
-        
+
         # 7. Get Top N Recommendations
         recommended_courses = recommended_courses.head(TOP_N)
         
-        # 8. Format Output (The rest of the code remains the same)
+        # 8. Format Output
         results = recommended_courses[[
             'subjectCode', RAW_TITLE_KEY, RAW_DESC_KEY, 'score' 
         ]].rename(columns={'subjectCode': 'course_code', 
@@ -135,17 +148,3 @@ class CourseRecommender:
                            RAW_DESC_KEY: 'description'}).to_dict('records')
         
         return results
-
-# Example Usage (Test the recommender):
-if __name__ == "__main__":
-    recommender = CourseRecommender()
-    
-    test_job = "Financial modeling and risk management"
-    test_major = "ECON" 
-    
-    print(f"\n--- Hybrid Recommendations for Job: {test_job}, Major: {test_major} ---")
-    recommendations = recommender.recommend(test_job, test_major)
-    
-    for rank, course in enumerate(recommendations, 1):
-        score = f"{course['score']:.4f}"
-        print(f"Rank {rank}: {course['course_code']} - {course['title']} (Score: {score})")
