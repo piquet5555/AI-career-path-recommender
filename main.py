@@ -4,6 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware  # FIX 1: Import CORS
 from pydantic import BaseModel
 from services.recommender import CourseRecommender
 
+@app.get("/")
+def read_root():
+    return {"status": "AI Recommender API is Running", "docs_url": "/docs"}
+
 # --- 1. INITIALIZATION ---
 
 # Initialize the FastAPI application
