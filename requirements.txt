@@ -12,6 +12,7 @@ python-dotenv       # For loading .env file locally
 # NLP/Modeling Libraries (for Phase III)
 scikit-learn
 spacy
+sentence-transformers
 
 # Specific spaCy Model (Essential for vectorization/modeling)
 # This installs the small English model directly into the environment
